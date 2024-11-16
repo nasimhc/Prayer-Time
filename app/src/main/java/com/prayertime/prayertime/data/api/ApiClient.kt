@@ -21,4 +21,12 @@ object ApiClient {
         .build()
 
     val prayerTimeApi: PrayerTimeApi = retrofit.create(PrayerTimeApi::class.java)
+
+    private val sunriseSunsetRetrofit = Retrofit.Builder()
+        .baseUrl("https://api.sunrisesunset.io/")
+        .client(okHttpClient)
+        .addConverterFactory(GsonConverterFactory.create())
+        .build()
+
+    val sunriseSunsetApi: SunriseSunsetApi = sunriseSunsetRetrofit.create(SunriseSunsetApi::class.java)
 } 

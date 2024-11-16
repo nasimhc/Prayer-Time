@@ -21,8 +21,12 @@ class PrayerTimeViewModel : ViewModel() {
     private val _currentPrayer = MutableStateFlow<String?>(null)
     val currentPrayer: StateFlow<String?> = _currentPrayer
 
+    private val _sunriseSunset = MutableStateFlow<Pair<String, String>?>(null)
+    val sunriseSunset: StateFlow<Pair<String, String>?> = _sunriseSunset
+
     init {
         fetchPrayerTimes()
+        fetchSunriseSunset()
     }
 
     private fun updateCurrentPrayer(prayerTimes: PrayerTimes) {
@@ -45,6 +49,19 @@ class PrayerTimeViewModel : ViewModel() {
                 _error.value = e.message ?: "An error occurred"
             } finally {
                 _isLoading.value = false
+            }
+        }
+    }
+
+    private fun fetchSunriseSunset() {
+        viewModelScope.launch {
+            try {
+                val response = ApiClient.sunriseSunsetApi.getSunriseSunset()
+                if (response.status == "OK") {
+                    _sunriseSunset.value = Pair(response.results.sunrise, response.results.sunset)
+                }
+            } catch (e: Exception) {
+                // Handle error
             }
         }
     }

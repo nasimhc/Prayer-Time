@@ -24,6 +24,9 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.prayertime.prayertime.ui.theme.PrayerTimeTheme
 import com.prayertime.prayertime.ui.viewmodel.PrayerTimeViewModel
+import androidx.compose.material3.Icon
+import androidx.compose.runtime.remember
+import androidx.compose.ui.res.painterResource
 
 class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
@@ -67,6 +70,7 @@ fun PrayerTimeScreen(
     viewModel: PrayerTimeViewModel = viewModel()
 ) {
     val prayerTimes by viewModel.prayerTimes.collectAsState()
+    val sunriseSunset by viewModel.sunriseSunset.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val error by viewModel.error.collectAsState()
     val currentPrayer by viewModel.currentPrayer.collectAsState()
@@ -103,6 +107,16 @@ fun PrayerTimeScreen(
                         backgroundColor = if (currentPrayer == "fajr") Color(0xFF4A90E2) else Color(0xFFE3F2FD),
                         textColor = if (currentPrayer == "fajr") Color.White else Color(0xFF424242)
                     )
+                    
+                    sunriseSunset?.first?.let { sunrise ->
+                        PrayerTimeCard(
+                            "সূর্যোদয়",
+                            sunrise,
+                            backgroundColor = Color(0xFFFFF3E0),
+                            textColor = Color(0xFF424242)
+                        )
+                    }
+                    
                     PrayerTimeCard(
                         "জোহর", 
                         prayerTimes?.dhuhr ?: "", 
@@ -121,6 +135,16 @@ fun PrayerTimeScreen(
                         backgroundColor = if (currentPrayer == "maghrib") Color(0xFFE67E22) else Color(0xFFFFF3E0),
                         textColor = if (currentPrayer == "maghrib") Color.White else Color(0xFF424242)
                     )
+                    
+                    sunriseSunset?.second?.let { sunset ->
+                        PrayerTimeCard(
+                            "সূর্যাস্ত",
+                            sunset,
+                            backgroundColor = Color(0xFFFFF3E0),
+                            textColor = Color(0xFF424242)
+                        )
+                    }
+                    
                     PrayerTimeCard(
                         "ইশা", 
                         prayerTimes?.isha ?: "", 
@@ -138,12 +162,25 @@ fun PrayerTimeCard(
     name: String, 
     time: String, 
     backgroundColor: Color,
-    textColor: Color
+    textColor: Color,
+    modifier: Modifier = Modifier
 ) {
+    val showIcon = remember(name) {
+        name == "সূর্যোদয়" || name == "সূর্যাস্ত"
+    }
+    
+    val icon = remember(name) {
+        when (name) {
+            "সূর্যোদয়" -> R.drawable.ic_sunrise
+            "সূর্যাস্ত" -> R.drawable.ic_sunset
+            else -> null
+        }
+    }
+
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .height(120.dp),
+            .height(140.dp),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = backgroundColor
@@ -159,6 +196,17 @@ fun PrayerTimeCard(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            if (showIcon) {
+                icon?.let {
+                    Icon(
+                        painter = painterResource(id = it),
+                        contentDescription = name,
+                        tint = textColor,
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+            }
             Text(
                 text = name,
                 style = TextStyle(
