@@ -51,7 +51,7 @@ class MainActivity : ComponentActivity() {
                                 ) 
                             },
                             colors = TopAppBarDefaults.topAppBarColors(
-                                containerColor = Color(0xFF4A90E2),
+                                containerColor = Color(0xFF231942),
                                 titleContentColor = Color.White
                             )
                         )
@@ -104,15 +104,15 @@ fun PrayerTimeScreen(
                     PrayerTimeCard(
                         "ফজর", 
                         prayerTimes?.fajr ?: "", 
-                        backgroundColor = if (currentPrayer == "fajr") Color(0xFF4A90E2) else Color(0xFFE3F2FD),
-                        textColor = if (currentPrayer == "fajr") Color.White else Color(0xFF424242)
+                        backgroundColor = if (currentPrayer == "fajr") Color(0xFFfaedcd) else Color(0xFFE3F2FD),
+                        textColor = if (currentPrayer == "fajr") Color(0xFF424242) else Color.White
                     )
                     
                     sunriseSunset?.first?.let { sunrise ->
                         PrayerTimeCard(
                             "সূর্যোদয়",
                             sunrise,
-                            backgroundColor = Color(0xFFFFF3E0),
+                            backgroundColor = Color(0xFFccd5ae),
                             textColor = Color(0xFF424242)
                         )
                     }
@@ -120,7 +120,7 @@ fun PrayerTimeScreen(
                     PrayerTimeCard(
                         "জোহর", 
                         prayerTimes?.dhuhr ?: "", 
-                        backgroundColor = if (currentPrayer == "dhuhr") Color(0xFF9B59B6) else Color(0xFFF3E5F5),
+                        backgroundColor = if (currentPrayer == "dhuhr") Color(0xFFfefae0) else Color(0xFFfefae0),
                         textColor = if (currentPrayer == "dhuhr") Color.White else Color(0xFF424242)
                     )
                     PrayerTimeCard(
@@ -140,8 +140,8 @@ fun PrayerTimeScreen(
                         PrayerTimeCard(
                             "সূর্যাস্ত",
                             sunset,
-                            backgroundColor = Color(0xFFFFF3E0),
-                            textColor = Color(0xFF424242)
+                            backgroundColor = Color(0xFF335c67),
+                            textColor = Color(0xFFfefae0)
                         )
                     }
                     

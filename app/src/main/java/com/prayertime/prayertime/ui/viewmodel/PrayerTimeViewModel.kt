@@ -58,7 +58,16 @@ class PrayerTimeViewModel : ViewModel() {
             try {
                 val response = ApiClient.sunriseSunsetApi.getSunriseSunset()
                 if (response.status == "OK") {
-                    _sunriseSunset.value = Pair(response.results.sunrise, response.results.sunset)
+                    // Format times to show hours, minutes and AM/PM
+                    val formattedSunrise = response.results.sunrise.split(" ").let { parts ->
+                        val time = parts[0].split(":").take(2).joinToString(":")
+                        "$time ${parts[1]}" // Adds back AM/PM
+                    }
+                    val formattedSunset = response.results.sunset.split(" ").let { parts ->
+                        val time = parts[0].split(":").take(2).joinToString(":")
+                        "$time ${parts[1]}" // Adds back AM/PM
+                    }
+                    _sunriseSunset.value = Pair(formattedSunrise, formattedSunset)
                 }
             } catch (e: Exception) {
                 // Handle error
