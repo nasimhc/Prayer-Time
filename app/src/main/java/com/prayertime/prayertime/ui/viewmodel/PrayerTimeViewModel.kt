@@ -18,8 +18,19 @@ class PrayerTimeViewModel : ViewModel() {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
+    private val _currentPrayer = MutableStateFlow<String?>(null)
+    val currentPrayer: StateFlow<String?> = _currentPrayer
+
     init {
         fetchPrayerTimes()
+    }
+
+    private fun updateCurrentPrayer(prayerTimes: PrayerTimes) {
+        viewModelScope.launch {
+            val currentTime = System.currentTimeMillis()
+            // For now, just setting a default value
+            _currentPrayer.value = "fajr" // Set to current prayer based on time
+        }
     }
 
     private fun fetchPrayerTimes() {
@@ -29,6 +40,7 @@ class PrayerTimeViewModel : ViewModel() {
                 _error.value = null
                 val response = ApiClient.prayerTimeApi.getPrayerTimes()
                 _prayerTimes.value = response.items.firstOrNull()
+                _prayerTimes.value?.let { updateCurrentPrayer(it) }
             } catch (e: Exception) {
                 _error.value = e.message ?: "An error occurred"
             } finally {

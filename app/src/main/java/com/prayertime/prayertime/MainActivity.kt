@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -41,11 +42,13 @@ class MainActivity : ComponentActivity() {
                                     style = TextStyle(
                                         fontSize = 28.sp,
                                         fontWeight = FontWeight.Bold
-                                    )
+                                    ),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textAlign = TextAlign.Center
                                 ) 
                             },
                             colors = TopAppBarDefaults.topAppBarColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
+                                containerColor = Color(0xFF4A90E2),
                                 titleContentColor = Color.White
                             )
                         )
@@ -66,11 +69,12 @@ fun PrayerTimeScreen(
     val prayerTimes by viewModel.prayerTimes.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val error by viewModel.error.collectAsState()
+    val currentPrayer by viewModel.currentPrayer.collectAsState()
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF5F5F5))
+            .background(Color(0xFFF8F9FA))
             .padding(16.dp)
     ) {
         when {
@@ -93,11 +97,36 @@ fun PrayerTimeScreen(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    PrayerTimeCard("ফজর", prayerTimes?.fajr ?: "", Color(0xFFE3F2FD))
-                    PrayerTimeCard("জোহর", prayerTimes?.dhuhr ?: "", Color(0xFFF3E5F5))
-                    PrayerTimeCard("আসর", prayerTimes?.asr ?: "", Color(0xFFE8F5E9))
-                    PrayerTimeCard("মাগরিব", prayerTimes?.maghrib ?: "", Color(0xFFFFF3E0))
-                    PrayerTimeCard("ইশা", prayerTimes?.isha ?: "", Color(0xFFEFEBE9))
+                    PrayerTimeCard(
+                        "ফজর", 
+                        prayerTimes?.fajr ?: "", 
+                        backgroundColor = if (currentPrayer == "fajr") Color(0xFF4A90E2) else Color(0xFFE3F2FD),
+                        textColor = if (currentPrayer == "fajr") Color.White else Color(0xFF424242)
+                    )
+                    PrayerTimeCard(
+                        "জোহর", 
+                        prayerTimes?.dhuhr ?: "", 
+                        backgroundColor = if (currentPrayer == "dhuhr") Color(0xFF9B59B6) else Color(0xFFF3E5F5),
+                        textColor = if (currentPrayer == "dhuhr") Color.White else Color(0xFF424242)
+                    )
+                    PrayerTimeCard(
+                        "আসর", 
+                        prayerTimes?.asr ?: "", 
+                        backgroundColor = if (currentPrayer == "asr") Color(0xFF2ECC71) else Color(0xFFE8F5E9),
+                        textColor = if (currentPrayer == "asr") Color.White else Color(0xFF424242)
+                    )
+                    PrayerTimeCard(
+                        "মাগরিব", 
+                        prayerTimes?.maghrib ?: "", 
+                        backgroundColor = if (currentPrayer == "maghrib") Color(0xFFE67E22) else Color(0xFFFFF3E0),
+                        textColor = if (currentPrayer == "maghrib") Color.White else Color(0xFF424242)
+                    )
+                    PrayerTimeCard(
+                        "ইশা", 
+                        prayerTimes?.isha ?: "", 
+                        backgroundColor = if (currentPrayer == "isha") Color(0xFF34495E) else Color(0xFFEFEBE9),
+                        textColor = if (currentPrayer == "isha") Color.White else Color(0xFF424242)
+                    )
                 }
             }
         }
@@ -105,7 +134,12 @@ fun PrayerTimeScreen(
 }
 
 @Composable
-fun PrayerTimeCard(name: String, time: String, backgroundColor: Color) {
+fun PrayerTimeCard(
+    name: String, 
+    time: String, 
+    backgroundColor: Color,
+    textColor: Color
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -130,7 +164,7 @@ fun PrayerTimeCard(name: String, time: String, backgroundColor: Color) {
                 style = TextStyle(
                     fontSize = 28.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF424242)
+                    color = textColor
                 )
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -138,7 +172,7 @@ fun PrayerTimeCard(name: String, time: String, backgroundColor: Color) {
                 text = time,
                 style = TextStyle(
                     fontSize = 24.sp,
-                    color = Color(0xFF757575)
+                    color = textColor.copy(alpha = 0.7f)
                 )
             )
         }
