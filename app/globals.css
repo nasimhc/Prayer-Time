@@ -1,0 +1,16 @@
+@font-face {
+  font-family: 'Kalpurush';
+  src: url('/kalpurush.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+/* Use the font */
+.kalpurush-font {
+  font-family: 'Kalpurush', sans-serif;
+}
+
+/* Apply globally to specific elements if needed */
+html {
+  font-family: 'Kalpurush', sans-serif;
+} 

@@ -16,11 +16,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.prayertime.prayertime.ui.theme.PrayerTimeTheme
 import com.prayertime.prayertime.ui.viewmodel.PrayerTimeViewModel
@@ -42,10 +39,7 @@ class MainActivity : ComponentActivity() {
                             title = { 
                                 Text(
                                     "নামাজের সময়",
-                                    style = TextStyle(
-                                        fontSize = 28.sp,
-                                        fontWeight = FontWeight.Bold
-                                    ),
+                                    style = MaterialTheme.typography.headlineMedium,
                                     modifier = Modifier.fillMaxWidth(),
                                     textAlign = TextAlign.Center
                                 ) 
@@ -129,13 +123,7 @@ fun PrayerTimeScreen(
                         backgroundColor = if (currentPrayer == "asr") Color(0xFF2ECC71) else Color(0xFFE8F5E9),
                         textColor = if (currentPrayer == "asr") Color.White else Color(0xFF424242)
                     )
-                    PrayerTimeCard(
-                        "মাগরিব", 
-                        prayerTimes?.maghrib ?: "", 
-                        backgroundColor = if (currentPrayer == "maghrib") Color(0xFFE67E22) else Color(0xFFFFF3E0),
-                        textColor = if (currentPrayer == "maghrib") Color.White else Color(0xFF424242)
-                    )
-                    
+
                     sunriseSunset?.second?.let { sunset ->
                         PrayerTimeCard(
                             "সূর্যাস্ত",
@@ -144,6 +132,13 @@ fun PrayerTimeScreen(
                             textColor = Color(0xFFfefae0)
                         )
                     }
+
+                    PrayerTimeCard(
+                        "মাগরিব", 
+                        prayerTimes?.maghrib ?: "", 
+                        backgroundColor = if (currentPrayer == "maghrib") Color(0xFFE67E22) else Color(0xFFFFF3E0),
+                        textColor = if (currentPrayer == "maghrib") Color.White else Color(0xFF424242)
+                    )
                     
                     PrayerTimeCard(
                         "ইশা", 
@@ -209,19 +204,12 @@ fun PrayerTimeCard(
             }
             Text(
                 text = name,
-                style = TextStyle(
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = textColor
-                )
+                style = MaterialTheme.typography.titleLarge.copy(color = textColor)
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = time,
-                style = TextStyle(
-                    fontSize = 24.sp,
-                    color = textColor.copy(alpha = 0.7f)
-                )
+                style = MaterialTheme.typography.bodyLarge.copy(color = textColor.copy(alpha = 0.7f))
             )
         }
     }
