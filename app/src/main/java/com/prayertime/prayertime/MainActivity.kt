@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import com.prayertime.prayertime.data.PreferencesManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
@@ -39,16 +40,22 @@ import com.prayertime.prayertime.ui.viewmodel.PrayerTimeViewModel
 import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
+    private lateinit var preferencesManager: PreferencesManager
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        preferencesManager = PreferencesManager(this)
         enableEdgeToEdge()
         setContent {
-            var isDarkTheme by remember { mutableStateOf(true) }
+            var isDarkTheme by remember { mutableStateOf(preferencesManager.isDarkTheme) }
 
             PrayerTimeTheme(darkTheme = isDarkTheme) {
                 PrayerTimeScreen(
                     isDarkTheme = isDarkTheme,
-                    onThemeToggle = { isDarkTheme = !isDarkTheme }
+                    onThemeToggle = {
+                        isDarkTheme = !isDarkTheme
+                        preferencesManager.isDarkTheme = isDarkTheme
+                    }
                 )
             }
         }
@@ -164,15 +171,30 @@ fun PrayerTimeScreen(
                         }
                     }
 
+                    // Sunrise & Sunset Row
+                    if (sunriseSunset != null) {
+                        AnimatedVisibility(
+                            visible = isVisible,
+                            enter = fadeIn(animationSpec = tween(600, delayMillis = 250)) +
+                                    slideInVertically(
+                                        animationSpec = tween(600, delayMillis = 250),
+                                        initialOffsetY = { 40 }
+                                    )
+                        ) {
+                            SunriseSunsetRow(
+                                sunrise = sunriseSunset?.first ?: "",
+                                sunset = sunriseSunset?.second ?: ""
+                            )
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(4.dp))
 
-                    // Prayer Time Cards
+                    // Prayer Time Cards (without sunrise/sunset)
                     val prayers = listOf(
                         Triple("ফজর", prayerTimes?.fajr ?: "", "fajr"),
-                        Triple("সূর্যোদয়", sunriseSunset?.first ?: "", "sunrise"),
                         Triple("জোহর", prayerTimes?.dhuhr ?: "", "dhuhr"),
                         Triple("আসর", prayerTimes?.asr ?: "", "asr"),
-                        Triple("সূর্যাস্ত", sunriseSunset?.second ?: "", "sunset"),
                         Triple("মাগরিব", prayerTimes?.maghrib ?: "", "maghrib"),
                         Triple("ইশা", prayerTimes?.isha ?: "", "isha")
                     )
@@ -181,9 +203,9 @@ fun PrayerTimeScreen(
                         if (time.isNotEmpty()) {
                             AnimatedVisibility(
                                 visible = isVisible,
-                                enter = fadeIn(animationSpec = tween(600, delayMillis = 300 + index * 70)) +
+                                enter = fadeIn(animationSpec = tween(600, delayMillis = 350 + index * 70)) +
                                         slideInVertically(
-                                            animationSpec = tween(600, delayMillis = 300 + index * 70),
+                                            animationSpec = tween(600, delayMillis = 350 + index * 70),
                                             initialOffsetY = { 40 }
                                         )
                             ) {
@@ -191,7 +213,6 @@ fun PrayerTimeScreen(
                                     name = name,
                                     time = time,
                                     isCurrent = currentPrayer == key,
-                                    isSpecial = key == "sunrise" || key == "sunset",
                                     accentColor = getPrayerAccentColor(key)
                                 )
                             }
@@ -345,11 +366,94 @@ fun HeroCountdownCard(
 }
 
 @Composable
+fun SunriseSunsetRow(
+    sunrise: String,
+    sunset: String,
+    modifier: Modifier = Modifier
+) {
+    val colors = LocalPrayerTimeColors.current
+
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Sunrise Card
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .border(
+                    width = 1.dp,
+                    color = SunriseColor.copy(alpha = 0.4f),
+                    shape = RoundedCornerShape(14.dp)
+                )
+                .background(colors.surfaceCard, RoundedCornerShape(14.dp))
+                .padding(14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_sunrise),
+                    contentDescription = "Sunrise",
+                    tint = SunriseColor,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "সূর্যোদয়",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.textMuted
+                )
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = sunrise,
+                style = MaterialTheme.typography.titleMedium,
+                color = SunriseColor
+            )
+        }
+
+        // Sunset Card
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .border(
+                    width = 1.dp,
+                    color = MaghribColor.copy(alpha = 0.4f),
+                    shape = RoundedCornerShape(14.dp)
+                )
+                .background(colors.surfaceCard, RoundedCornerShape(14.dp))
+                .padding(14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_sunset),
+                    contentDescription = "Sunset",
+                    tint = MaghribColor,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "সূর্যাস্ত",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.textMuted
+                )
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = sunset,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaghribColor
+            )
+        }
+    }
+}
+
+@Composable
 fun PrayerTimeCard(
     name: String,
     time: String,
     isCurrent: Boolean,
-    isSpecial: Boolean,
     accentColor: Color,
     modifier: Modifier = Modifier
 ) {
@@ -366,15 +470,16 @@ fun PrayerTimeCard(
         label = "currentGlow"
     )
 
-    val borderColor = when {
-        isCurrent -> colors.goldBright.copy(alpha = currentGlow)
-        isSpecial -> SunriseColor.copy(alpha = 0.5f)
-        else -> colors.borderColor.copy(alpha = 0.6f)
+    val borderColor = if (isCurrent) {
+        colors.goldBright.copy(alpha = currentGlow)
+    } else {
+        colors.borderColor.copy(alpha = 0.6f)
     }
 
-    val backgroundColor = when {
-        isCurrent -> colors.surfaceCardElevated
-        else -> colors.surfaceCard
+    val backgroundColor = if (isCurrent) {
+        colors.surfaceCardElevated
+    } else {
+        colors.surfaceCard
     }
 
     Row(
@@ -402,8 +507,6 @@ fun PrayerTimeCard(
                         brush = Brush.verticalGradient(
                             colors = if (isCurrent) {
                                 listOf(colors.goldBright, colors.goldMuted)
-                            } else if (isSpecial) {
-                                listOf(SunriseColor, AsrColor)
                             } else {
                                 listOf(accentColor.copy(alpha = 0.7f), accentColor.copy(alpha = 0.3f))
                             }
@@ -413,18 +516,6 @@ fun PrayerTimeCard(
             )
 
             Spacer(modifier = Modifier.width(16.dp))
-
-            // Icon for sunrise/sunset
-            if (isSpecial) {
-                val iconRes = if (name == "সূর্যোদয়") R.drawable.ic_sunrise else R.drawable.ic_sunset
-                Icon(
-                    painter = painterResource(id = iconRes),
-                    contentDescription = name,
-                    tint = SunriseColor,
-                    modifier = Modifier.size(22.dp)
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-            }
 
             // Prayer name
             Text(
