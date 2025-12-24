@@ -58,6 +58,18 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// Map English prayer names to Bengali
+private fun getPrayerNameInBengali(prayerName: String?): String {
+    return when (prayerName) {
+        "fajr" -> "ফজর"
+        "dhuhr" -> "জোহর"
+        "asr" -> "আসর"
+        "maghrib" -> "মাগরিব"
+        "isha" -> "ইশা"
+        else -> ""
+    }
+}
+
 @Composable
 fun PrayerTimeScreen(
     modifier: Modifier = Modifier,
@@ -68,6 +80,8 @@ fun PrayerTimeScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val error by viewModel.error.collectAsState()
     val currentPrayer by viewModel.currentPrayer.collectAsState()
+    val nextPrayer by viewModel.nextPrayer.collectAsState()
+    val countdown by viewModel.countdownToNextPrayer.collectAsState()
 
     Box(
         modifier = modifier
@@ -95,6 +109,14 @@ fun PrayerTimeScreen(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
+                    // Countdown to next prayer card
+                    if (nextPrayer != null && countdown != null) {
+                        NextPrayerCountdownCard(
+                            nextPrayerName = getPrayerNameInBengali(nextPrayer),
+                            countdown = countdown ?: ""
+                        )
+                    }
+
                     PrayerTimeCard(
                         "ফজর", 
                         prayerTimes?.fajr ?: "", 
@@ -210,6 +232,48 @@ fun PrayerTimeCard(
             Text(
                 text = time,
                 style = MaterialTheme.typography.bodyLarge.copy(color = textColor.copy(alpha = 0.7f))
+            )
+        }
+    }
+}
+
+@Composable
+fun NextPrayerCountdownCard(
+    nextPrayerName: String,
+    countdown: String,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(120.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFF231942)
+        ),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 8.dp
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "পরবর্তী নামাজ: $nextPrayerName",
+                style = MaterialTheme.typography.titleMedium.copy(
+                    color = Color(0xFFE0E0E0)
+                )
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = countdown,
+                style = MaterialTheme.typography.headlineLarge.copy(
+                    color = Color.White
+                )
             )
         }
     }

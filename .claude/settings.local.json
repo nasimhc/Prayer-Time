@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew assembleDebug)",
+      "Bash(./gradlew --stop)",
+      "Bash(./gradlew assembleDebug -Dorg.gradle.jvmargs=\"-Xmx512m\" --no-daemon)",
+      "Bash(JAVA_HOME=\"/c/Program Files/Android/Android Studio/jbr\" ./gradlew assembleDebug --no-daemon)"
+    ]
+  }
+}

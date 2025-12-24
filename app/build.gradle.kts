@@ -1,7 +1,16 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+}
+
+// Load local.properties
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localProperties.load(localPropertiesFile.inputStream())
 }
 
 android {
@@ -9,6 +18,8 @@ android {
     compileSdk = 34
 
     defaultConfig {
+        buildConfigField("String", "RAPID_API_KEY", "\"${localProperties.getProperty("RAPID_API_KEY", "")}\"")
+
         applicationId = "com.prayertime.prayertime"
         minSdk = 24
         targetSdk = 34
@@ -39,6 +50,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
