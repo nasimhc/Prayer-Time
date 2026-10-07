@@ -81,4 +81,10 @@ dependencies {
     // Coroutines for async operations
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
+
+    // Google Play Services Location
+    implementation("com.google.android.gms:play-services-location:21.1.0")
+
+    // Material for pull-to-refresh
+    implementation("androidx.compose.material:material:1.6.1")
 }

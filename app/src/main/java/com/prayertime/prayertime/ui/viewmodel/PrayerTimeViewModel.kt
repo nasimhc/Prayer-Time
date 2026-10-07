@@ -1,20 +1,29 @@
 package com.prayertime.prayertime.ui.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.prayertime.prayertime.BuildConfig
+import com.prayertime.prayertime.data.LocationHelper
+import com.prayertime.prayertime.data.PreferencesManager
 import com.prayertime.prayertime.data.api.ApiClient
 import com.prayertime.prayertime.data.model.PrayerTimes
+import com.prayertime.prayertime.data.model.UserLocation
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.Calendar
 import java.util.Locale
 
-class PrayerTimeViewModel : ViewModel() {
+class PrayerTimeViewModel(application: Application) : AndroidViewModel(application) {
+    private val preferencesManager = PreferencesManager(application)
+    private val locationHelper = LocationHelper(application)
+
     private val _prayerTimes = MutableStateFlow<PrayerTimes?>(null)
     val prayerTimes: StateFlow<PrayerTimes?> = _prayerTimes
 
@@ -36,17 +45,75 @@ class PrayerTimeViewModel : ViewModel() {
     private val _sunriseSunset = MutableStateFlow<Pair<String, String>?>(null)
     val sunriseSunset: StateFlow<Pair<String, String>?> = _sunriseSunset
 
+    private val _currentLocation = MutableStateFlow(preferencesManager.savedLocation)
+    val currentLocation: StateFlow<UserLocation> = _currentLocation
+
+    private val _isDetectingLocation = MutableStateFlow(false)
+    val isDetectingLocation: StateFlow<Boolean> = _isDetectingLocation
+
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing
+
     private var updateJob: Job? = null
 
     init {
-        fetchPrayerTimes()
-        fetchSunriseSunset()
+        loadDataForCurrentLocation()
         startPeriodicUpdate()
     }
 
-    /**
-     * Parses time string like "5:30 am" or "12:45 PM" to minutes since midnight
-     */
+    fun loadDataForCurrentLocation() {
+        val location = _currentLocation.value
+        fetchPrayerTimes(location.apiCityName)
+        fetchSunriseSunset(location.latitude, location.longitude)
+    }
+
+    fun refresh() {
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            val location = _currentLocation.value
+            fetchPrayerTimesSync(location.apiCityName)
+            fetchSunriseSunsetSync(location.latitude, location.longitude)
+            _isRefreshing.value = false
+        }
+    }
+
+    fun setLocation(location: UserLocation) {
+        _currentLocation.value = location
+        preferencesManager.savedLocation = location
+        loadDataForCurrentLocation()
+    }
+
+    fun detectCurrentLocation() {
+        if (!locationHelper.hasLocationPermission()) {
+            _error.value = "Location permission not granted"
+            return
+        }
+
+        viewModelScope.launch {
+            _isDetectingLocation.value = true
+            try {
+                locationHelper.getCurrentLocation()
+                    .catch { e ->
+                        _error.value = "Failed to get location: ${e.message}"
+                        _isDetectingLocation.value = false
+                    }
+                    .first()
+                    .let { result ->
+                        result.lastLocation?.let { location ->
+                            val userLocation = locationHelper.locationToUserLocation(location)
+                            setLocation(userLocation)
+                        }
+                    }
+            } catch (e: Exception) {
+                _error.value = "Failed to detect location: ${e.message}"
+            } finally {
+                _isDetectingLocation.value = false
+            }
+        }
+    }
+
+    fun hasLocationPermission(): Boolean = locationHelper.hasLocationPermission()
+
     private fun parseTimeToMinutes(timeStr: String): Int? {
         return try {
             val cleanTime = timeStr.trim().lowercase(Locale.US)
@@ -57,7 +124,6 @@ class PrayerTimeViewModel : ViewModel() {
             var hours = parts[0].toInt()
             val minutes = parts[1].toInt()
 
-            // Convert to 24-hour format
             if (isPM && hours != 12) {
                 hours += 12
             } else if (!isPM && hours == 12) {
@@ -70,9 +136,6 @@ class PrayerTimeViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Gets current time as seconds since midnight
-     */
     private fun getCurrentTimeInSeconds(): Int {
         val calendar = Calendar.getInstance()
         val hours = calendar.get(Calendar.HOUR_OF_DAY)
@@ -81,20 +144,11 @@ class PrayerTimeViewModel : ViewModel() {
         return hours * 3600 + minutes * 60 + seconds
     }
 
-    /**
-     * Converts minutes since midnight to seconds since midnight
-     */
     private fun minutesToSeconds(minutes: Int): Int = minutes * 60
 
-    /**
-     * Determines the current prayer based on prayer times and current time.
-     * Current prayer = the most recent prayer that has started.
-     * Also calculates the next prayer and countdown.
-     */
     private fun updateCurrentPrayer(prayerTimes: PrayerTimes) {
         val currentSeconds = getCurrentTimeInSeconds()
 
-        // Create list of prayers with their times in order (in seconds)
         val prayers = listOf(
             "fajr" to parseTimeToMinutes(prayerTimes.fajr),
             "dhuhr" to parseTimeToMinutes(prayerTimes.dhuhr),
@@ -110,8 +164,6 @@ class PrayerTimeViewModel : ViewModel() {
             return
         }
 
-        // Find the current prayer (the most recent one that has passed)
-        // and the next prayer (the first one that hasn't started yet)
         var currentPrayerName: String? = null
         var nextPrayerName: String? = null
         var nextPrayerTimeSeconds: Int? = null
@@ -125,26 +177,22 @@ class PrayerTimeViewModel : ViewModel() {
             }
         }
 
-        // If no prayer has passed yet today, we're still in Isha from last night
-        // and the next prayer is Fajr
         if (currentPrayerName == null) {
             currentPrayerName = "isha"
             nextPrayerName = prayers.firstOrNull()?.first
             nextPrayerTimeSeconds = prayers.firstOrNull()?.second
         }
 
-        // If all prayers have passed, next prayer is Fajr tomorrow
         if (nextPrayerName == null) {
             nextPrayerName = prayers.firstOrNull()?.first
             nextPrayerTimeSeconds = prayers.firstOrNull()?.second?.let {
-                it + SECONDS_IN_DAY // Add 24 hours for tomorrow
+                it + SECONDS_IN_DAY
             }
         }
 
         _currentPrayer.value = currentPrayerName
         _nextPrayer.value = nextPrayerName
 
-        // Calculate countdown
         nextPrayerTimeSeconds?.let { nextTime ->
             val remainingSeconds = if (nextTime > currentSeconds) {
                 nextTime - currentSeconds
@@ -157,9 +205,6 @@ class PrayerTimeViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Formats seconds into a readable countdown string (e.g., "2h 35m 10s")
-     */
     private fun formatCountdown(totalSeconds: Int): String {
         val hours = totalSeconds / 3600
         val minutes = (totalSeconds % 3600) / 60
@@ -176,15 +221,12 @@ class PrayerTimeViewModel : ViewModel() {
         private const val SECONDS_IN_DAY = 24 * 60 * 60
     }
 
-    /**
-     * Starts a periodic job to update the current prayer and countdown every second
-     */
     private fun startPeriodicUpdate() {
         updateJob?.cancel()
         updateJob = viewModelScope.launch {
             while (isActive) {
                 _prayerTimes.value?.let { updateCurrentPrayer(it) }
-                delay(1_000) // Update every second for smooth countdown
+                delay(1_000)
             }
         }
     }
@@ -194,12 +236,15 @@ class PrayerTimeViewModel : ViewModel() {
         updateJob?.cancel()
     }
 
-    private fun fetchPrayerTimes() {
+    private fun fetchPrayerTimes(apiCityName: String) {
         viewModelScope.launch {
             try {
                 _isLoading.value = true
                 _error.value = null
-                val response = ApiClient.prayerTimeApi.getPrayerTimes(BuildConfig.RAPID_API_KEY)
+                val response = ApiClient.prayerTimeApi.getPrayerTimes(
+                    city = apiCityName,
+                    apiKey = BuildConfig.RAPID_API_KEY
+                )
                 _prayerTimes.value = response.items.firstOrNull()
                 _prayerTimes.value?.let { updateCurrentPrayer(it) }
             } catch (e: Exception) {
@@ -210,25 +255,57 @@ class PrayerTimeViewModel : ViewModel() {
         }
     }
 
-    private fun fetchSunriseSunset() {
+    private suspend fun fetchPrayerTimesSync(apiCityName: String) {
+        try {
+            _error.value = null
+            val response = ApiClient.prayerTimeApi.getPrayerTimes(
+                city = apiCityName,
+                apiKey = BuildConfig.RAPID_API_KEY
+            )
+            _prayerTimes.value = response.items.firstOrNull()
+            _prayerTimes.value?.let { updateCurrentPrayer(it) }
+        } catch (e: Exception) {
+            _error.value = e.message ?: "An error occurred"
+        }
+    }
+
+    private fun fetchSunriseSunset(lat: Double, lng: Double) {
         viewModelScope.launch {
             try {
-                val response = ApiClient.sunriseSunsetApi.getSunriseSunset()
+                val response = ApiClient.sunriseSunsetApi.getSunriseSunset(lat, lng)
                 if (response.status == "OK") {
-                    // Format times to show hours, minutes and AM/PM
                     val formattedSunrise = response.results.sunrise.split(" ").let { parts ->
                         val time = parts[0].split(":").take(2).joinToString(":")
-                        "$time ${parts[1]}" // Adds back AM/PM
+                        "$time ${parts[1]}"
                     }
                     val formattedSunset = response.results.sunset.split(" ").let { parts ->
                         val time = parts[0].split(":").take(2).joinToString(":")
-                        "$time ${parts[1]}" // Adds back AM/PM
+                        "$time ${parts[1]}"
                     }
                     _sunriseSunset.value = Pair(formattedSunrise, formattedSunset)
                 }
             } catch (e: Exception) {
-                // Handle error
+                // Handle error silently for sunrise/sunset
             }
         }
     }
-} 
+
+    private suspend fun fetchSunriseSunsetSync(lat: Double, lng: Double) {
+        try {
+            val response = ApiClient.sunriseSunsetApi.getSunriseSunset(lat, lng)
+            if (response.status == "OK") {
+                val formattedSunrise = response.results.sunrise.split(" ").let { parts ->
+                    val time = parts[0].split(":").take(2).joinToString(":")
+                    "$time ${parts[1]}"
+                }
+                val formattedSunset = response.results.sunset.split(" ").let { parts ->
+                    val time = parts[0].split(":").take(2).joinToString(":")
+                    "$time ${parts[1]}"
+                }
+                _sunriseSunset.value = Pair(formattedSunrise, formattedSunset)
+            }
+        } catch (e: Exception) {
+            // Handle error silently for sunrise/sunset
+        }
+    }
+}

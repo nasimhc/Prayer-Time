@@ -1,10 +1,14 @@
 package com.prayertime.prayertime
 
+import android.Manifest
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import com.prayertime.prayertime.data.PreferencesManager
+import com.prayertime.prayertime.data.model.UserLocation
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
@@ -14,11 +18,17 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.Canvas
+import androidx.compose.material.ExperimentalMaterialApi
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,8 +42,10 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.prayertime.prayertime.ui.theme.*
 import com.prayertime.prayertime.ui.viewmodel.PrayerTimeViewModel
@@ -88,6 +100,7 @@ private fun getPrayerAccentColor(prayerName: String?): Color {
     }
 }
 
+@OptIn(ExperimentalMaterialApi::class)
 @Composable
 fun PrayerTimeScreen(
     modifier: Modifier = Modifier,
@@ -103,8 +116,29 @@ fun PrayerTimeScreen(
     val currentPrayer by viewModel.currentPrayer.collectAsState()
     val nextPrayer by viewModel.nextPrayer.collectAsState()
     val countdown by viewModel.countdownToNextPrayer.collectAsState()
+    val currentLocation by viewModel.currentLocation.collectAsState()
+    val isDetectingLocation by viewModel.isDetectingLocation.collectAsState()
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
 
     var isVisible by remember { mutableStateOf(false) }
+    var showLocationPicker by remember { mutableStateOf(false) }
+
+    // Pull-to-refresh state
+    val pullRefreshState = rememberPullRefreshState(
+        refreshing = isRefreshing,
+        onRefresh = { viewModel.refresh() }
+    )
+
+    // Permission launcher
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineLocationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+        val coarseLocationGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
+        if (fineLocationGranted || coarseLocationGranted) {
+            viewModel.detectCurrentLocation()
+        }
+    }
 
     LaunchedEffect(Unit) {
         delay(100)
@@ -115,18 +149,19 @@ fun PrayerTimeScreen(
         modifier = modifier
             .fillMaxSize()
             .background(colors.background)
+            .pullRefresh(pullRefreshState)
     ) {
         when {
-            isLoading -> {
+            isLoading && prayerTimes == null -> {
                 LoadingAnimation(modifier = Modifier.align(Alignment.Center))
             }
-            error != null -> {
+            error != null && prayerTimes == null -> {
                 ErrorDisplay(
                     error = error,
                     modifier = Modifier.align(Alignment.Center)
                 )
             }
-            prayerTimes != null -> {
+            else -> {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -147,7 +182,10 @@ fun PrayerTimeScreen(
                     ) {
                         AppHeader(
                             isDarkTheme = isDarkTheme,
-                            onThemeToggle = onThemeToggle
+                            onThemeToggle = onThemeToggle,
+                            currentLocation = currentLocation,
+                            isDetectingLocation = isDetectingLocation,
+                            onLocationClick = { showLocationPicker = true }
                         )
                     }
 
@@ -223,55 +261,304 @@ fun PrayerTimeScreen(
                 }
             }
         }
+
+        // Pull-to-refresh indicator
+        PullRefreshIndicator(
+            refreshing = isRefreshing,
+            state = pullRefreshState,
+            modifier = Modifier.align(Alignment.TopCenter),
+            backgroundColor = colors.surfaceCardElevated,
+            contentColor = colors.goldBright
+        )
+    }
+
+    // Location Picker Dialog
+    if (showLocationPicker) {
+        LocationPickerDialog(
+            currentLocation = currentLocation,
+            onDismiss = { showLocationPicker = false },
+            onLocationSelected = { location ->
+                viewModel.setLocation(location)
+                showLocationPicker = false
+            },
+            onDetectLocation = {
+                if (viewModel.hasLocationPermission()) {
+                    viewModel.detectCurrentLocation()
+                } else {
+                    permissionLauncher.launch(
+                        arrayOf(
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION
+                        )
+                    )
+                }
+            },
+            isDetectingLocation = isDetectingLocation
+        )
     }
 }
 
 @Composable
 fun AppHeader(
     isDarkTheme: Boolean,
-    onThemeToggle: () -> Unit
+    onThemeToggle: () -> Unit,
+    currentLocation: UserLocation,
+    isDetectingLocation: Boolean,
+    onLocationClick: () -> Unit
 ) {
     val colors = LocalPrayerTimeColors.current
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column {
-            Text(
-                text = "নামাজের সময়",
-                style = MaterialTheme.typography.headlineMedium,
-                color = colors.textPrimary
-            )
-            Text(
-                text = "Prayer Times",
-                style = MaterialTheme.typography.labelMedium,
-                color = colors.textMuted,
-                letterSpacing = 2.sp
-            )
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    text = "নামাজের সময়",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = colors.textPrimary
+                )
+                Text(
+                    text = "Prayer Times",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.textMuted,
+                    letterSpacing = 2.sp
+                )
+            }
+
+            // Theme toggle button
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(colors.surfaceCard)
+                    .border(1.dp, colors.borderColor, CircleShape)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onThemeToggle
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                ThemeIcon(
+                    isDarkTheme = isDarkTheme,
+                    tint = colors.goldBright,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
         }
 
-        // Theme toggle button
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Location indicator
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(10.dp))
+                .background(colors.surfaceCard)
+                .border(1.dp, colors.borderColor, RoundedCornerShape(10.dp))
+                .clickable(onClick = onLocationClick)
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isDetectingLocation) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    color = colors.goldBright,
+                    strokeWidth = 2.dp
+                )
+            } else {
+                LocationIcon(
+                    tint = colors.goldBright,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = if (isDetectingLocation) "Detecting..." else currentLocation.cityName,
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.textPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (currentLocation.isAutoDetected && !isDetectingLocation) {
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "(GPS)",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.textMuted
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun LocationPickerDialog(
+    currentLocation: UserLocation,
+    onDismiss: () -> Unit,
+    onLocationSelected: (UserLocation) -> Unit,
+    onDetectLocation: () -> Unit,
+    isDetectingLocation: Boolean
+) {
+    val colors = LocalPrayerTimeColors.current
+
+    Dialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
-                .size(48.dp)
-                .clip(CircleShape)
-                .background(colors.surfaceCard)
-                .border(1.dp, colors.borderColor, CircleShape)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onThemeToggle
-                ),
-            contentAlignment = Alignment.Center
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(colors.background)
+                .border(1.dp, colors.borderColor, RoundedCornerShape(20.dp))
         ) {
-            ThemeIcon(
-                isDarkTheme = isDarkTheme,
-                tint = colors.goldBright,
-                modifier = Modifier.size(24.dp)
-            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+            ) {
+                Text(
+                    text = "Select Location",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = colors.textPrimary
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Auto-detect button
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(colors.surfaceCardElevated)
+                        .border(1.dp, colors.goldBright.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                        .clickable(enabled = !isDetectingLocation) { onDetectLocation() }
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (isDetectingLocation) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = colors.goldBright,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        LocationIcon(
+                            tint = colors.goldBright,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = "Use Current Location",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = colors.textPrimary
+                        )
+                        Text(
+                            text = "Auto-detect using GPS",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.textMuted
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = "Or select a city:",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = colors.textMuted
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // City list
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(300.dp)
+                ) {
+                    items(UserLocation.PRESET_CITIES) { city ->
+                        val isSelected = city.cityName == currentLocation.cityName
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(
+                                    if (isSelected) colors.goldBright.copy(alpha = 0.15f)
+                                    else Color.Transparent
+                                )
+                                .clickable { onLocationSelected(city) }
+                                .padding(horizontal = 12.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = city.cityName,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = if (isSelected) colors.goldBright else colors.textPrimary
+                            )
+                            if (isSelected) {
+                                Spacer(modifier = Modifier.weight(1f))
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .background(colors.goldBright, CircleShape)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Close button
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text(
+                        text = "Close",
+                        color = colors.textMuted
+                    )
+                }
+            }
         }
+    }
+}
+
+@Composable
+fun LocationIcon(
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val centerX = size.width / 2
+        val pinHeight = size.height * 0.7f
+        val pinRadius = size.width * 0.35f
+
+        // Pin body (teardrop shape)
+        drawCircle(
+            color = tint,
+            radius = pinRadius,
+            center = Offset(centerX, pinRadius)
+        )
+
+        // Pin point
+        val path = androidx.compose.ui.graphics.Path().apply {
+            moveTo(centerX - pinRadius * 0.7f, pinRadius)
+            lineTo(centerX, pinHeight + pinRadius * 0.3f)
+            lineTo(centerX + pinRadius * 0.7f, pinRadius)
+            close()
+        }
+        drawPath(path, tint)
+
+        // Inner circle (hole)
+        drawCircle(
+            color = if (tint == GoldBright) MidnightDeep else IvoryDeep,
+            radius = pinRadius * 0.35f,
+            center = Offset(centerX, pinRadius)
+        )
     }
 }
 
@@ -637,13 +924,11 @@ fun ThemeIcon(
 
         if (isDarkTheme) {
             // Sun icon (show when in dark mode to switch to light)
-            // Center circle
             drawCircle(
                 color = tint,
                 radius = radius * 0.6f,
                 center = Offset(centerX, centerY)
             )
-            // Sun rays
             val rayLength = radius * 0.4f
             val rayStart = radius * 0.8f
             for (i in 0 until 8) {
@@ -670,7 +955,6 @@ fun ThemeIcon(
                 topLeft = Offset(centerX - radius, centerY - radius),
                 size = androidx.compose.ui.geometry.Size(radius * 2, radius * 2)
             )
-            // Cut out for crescent effect
             drawCircle(
                 color = if (isDarkTheme) MidnightDeep else IvoryDeep,
                 radius = radius * 0.7f,
