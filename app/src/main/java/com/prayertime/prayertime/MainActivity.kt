@@ -251,7 +251,8 @@ fun PrayerTimeScreen(
                                     name = name,
                                     time = time,
                                     isCurrent = currentPrayer == key,
-                                    accentColor = getPrayerAccentColor(key)
+                                    accentColor = getPrayerAccentColor(key),
+                                    subtitle = if (key == "asr") "হানাফি মতানুযায়ী" else null
                                 )
                             }
                         }
@@ -742,7 +743,8 @@ fun PrayerTimeCard(
     time: String,
     isCurrent: Boolean,
     accentColor: Color,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    subtitle: String? = null
 ) {
     val colors = LocalPrayerTimeColors.current
 
@@ -804,12 +806,22 @@ fun PrayerTimeCard(
 
             Spacer(modifier = Modifier.width(16.dp))
 
-            // Prayer name
-            Text(
-                text = name,
-                style = MaterialTheme.typography.titleMedium,
-                color = if (isCurrent) colors.goldWarm else colors.textPrimary
-            )
+            // Prayer name (+ optional sub-label such as the Asr madhab)
+            Column {
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (isCurrent) colors.goldWarm else colors.textPrimary
+                )
+                if (subtitle != null) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.textMuted,
+                        letterSpacing = 0.5.sp
+                    )
+                }
+            }
 
             // Current prayer badge
             if (isCurrent) {

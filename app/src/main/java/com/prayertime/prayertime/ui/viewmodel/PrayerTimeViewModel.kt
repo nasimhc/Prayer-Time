@@ -9,6 +9,7 @@ import com.prayertime.prayertime.data.api.ApiClient
 import com.prayertime.prayertime.data.model.AladhanTimings
 import com.prayertime.prayertime.data.model.PrayerTimes
 import com.prayertime.prayertime.data.model.UserLocation
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -55,6 +56,7 @@ class PrayerTimeViewModel(application: Application) : AndroidViewModel(applicati
     val isRefreshing: StateFlow<Boolean> = _isRefreshing
 
     private var updateJob: Job? = null
+    private var fetchJob: Job? = null
 
     init {
         loadDataForCurrentLocation()
@@ -232,6 +234,7 @@ class PrayerTimeViewModel(application: Application) : AndroidViewModel(applicati
     override fun onCleared() {
         super.onCleared()
         updateJob?.cancel()
+        fetchJob?.cancel()
     }
 
     private fun to12HourTime(time24h: String): String {
@@ -270,38 +273,30 @@ class PrayerTimeViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     private fun fetchPrayerTimes(lat: Double, lng: Double) {
-        viewModelScope.launch {
+        // Cancel any in-flight request so a stale response can never overwrite the
+        // result for the most recently requested location.
+        fetchJob?.cancel()
+        fetchJob = viewModelScope.launch {
+            _isLoading.value = true
             try {
-                _isLoading.value = true
-                _error.value = null
-                val response = ApiClient.aladhanApi.getPrayerTimes(
-                    timestamp = System.currentTimeMillis() / 1000,
-                    latitude = lat,
-                    longitude = lng
-                )
-                if (response.code == 200 && response.status == "OK") {
-                    _prayerTimes.value = mapAladhanTimingsToPrayerTimes(response.data.timings)
-                    _sunriseSunset.value = Pair(
-                        to12HourTime(response.data.timings.sunrise),
-                        to12HourTime(response.data.timings.sunset)
-                    )
-                    _prayerTimes.value?.let { updateCurrentPrayer(it) }
-                } else {
-                    _error.value = "Failed to load prayer times (${response.status})"
-                }
-            } catch (e: retrofit2.HttpException) {
-                _error.value = mapHttpExceptionMessage(e)
-            } catch (e: Exception) {
-                _error.value = e.message ?: "An error occurred"
+                fetchPrayerTimesCore(lat, lng)
             } finally {
-                _isLoading.value = false
+                // If this request was superseded, the newer request owns the loading
+                // state — don't clear it here.
+                if (isActive) _isLoading.value = false
             }
         }
     }
 
     private suspend fun fetchPrayerTimesSync(lat: Double, lng: Double) {
+        fetchJob?.cancel()
+        fetchPrayerTimesCore(lat, lng)
+    }
+
+    private suspend fun fetchPrayerTimesCore(lat: Double, lng: Double) {
+        _error.value = null
         try {
-            _error.value = null
+            // school defaults to Hanafi (1) in AladhanApi — Asr shadow ratio 2x
             val response = ApiClient.aladhanApi.getPrayerTimes(
                 timestamp = System.currentTimeMillis() / 1000,
                 latitude = lat,
@@ -317,6 +312,8 @@ class PrayerTimeViewModel(application: Application) : AndroidViewModel(applicati
             } else {
                 _error.value = "Failed to load prayer times (${response.status})"
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: retrofit2.HttpException) {
             _error.value = mapHttpExceptionMessage(e)
         } catch (e: Exception) {
