@@ -3,10 +3,10 @@ package com.prayertime.prayertime.ui.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.prayertime.prayertime.BuildConfig
 import com.prayertime.prayertime.data.LocationHelper
 import com.prayertime.prayertime.data.PreferencesManager
 import com.prayertime.prayertime.data.api.ApiClient
+import com.prayertime.prayertime.data.model.AladhanTimings
 import com.prayertime.prayertime.data.model.PrayerTimes
 import com.prayertime.prayertime.data.model.UserLocation
 import kotlinx.coroutines.Job
@@ -63,16 +63,14 @@ class PrayerTimeViewModel(application: Application) : AndroidViewModel(applicati
 
     fun loadDataForCurrentLocation() {
         val location = _currentLocation.value
-        fetchPrayerTimes(location.apiCityName)
-        fetchSunriseSunset(location.latitude, location.longitude)
+        fetchPrayerTimes(location.latitude, location.longitude)
     }
 
     fun refresh() {
         viewModelScope.launch {
             _isRefreshing.value = true
             val location = _currentLocation.value
-            fetchPrayerTimesSync(location.apiCityName)
-            fetchSunriseSunsetSync(location.latitude, location.longitude)
+            fetchPrayerTimesSync(location.latitude, location.longitude)
             _isRefreshing.value = false
         }
     }
@@ -236,17 +234,63 @@ class PrayerTimeViewModel(application: Application) : AndroidViewModel(applicati
         updateJob?.cancel()
     }
 
-    private fun fetchPrayerTimes(apiCityName: String) {
+    private fun to12HourTime(time24h: String): String {
+        val parts = time24h.trim().split(":")
+        val hours = parts[0].toIntOrNull() ?: return time24h
+        val minutes = parts.getOrNull(1) ?: "00"
+        val suffix = if (hours >= 12) "PM" else "AM"
+        val hour12 = when {
+            hours % 12 == 0 -> 12
+            else -> hours % 12
+        }
+        return String.format(Locale.US, "%d:%s %s", hour12, minutes, suffix)
+    }
+
+    private fun mapHttpExceptionMessage(e: retrofit2.HttpException): String {
+        val message = when (e.code()) {
+            404 -> "Prayer times endpoint not found"
+            403 -> "Access forbidden by the server"
+            429 -> "Too many requests, please try again later"
+            in 500..599 -> "Server error, please try again later"
+            else -> e.message()
+        }
+        return "$message (HTTP ${e.code()})"
+    }
+
+    private fun mapAladhanTimingsToPrayerTimes(timings: AladhanTimings): PrayerTimes {
+        return PrayerTimes(
+            fajr = to12HourTime(timings.fajr),
+            shurooq = to12HourTime(timings.sunrise),
+            dhuhr = to12HourTime(timings.dhuhr),
+            asr = to12HourTime(timings.asr),
+            maghrib = to12HourTime(timings.maghrib),
+            isha = to12HourTime(timings.isha),
+            date_for = ""
+        )
+    }
+
+    private fun fetchPrayerTimes(lat: Double, lng: Double) {
         viewModelScope.launch {
             try {
                 _isLoading.value = true
                 _error.value = null
-                val response = ApiClient.prayerTimeApi.getPrayerTimes(
-                    city = apiCityName,
-                    apiKey = BuildConfig.RAPID_API_KEY
+                val response = ApiClient.aladhanApi.getPrayerTimes(
+                    timestamp = System.currentTimeMillis() / 1000,
+                    latitude = lat,
+                    longitude = lng
                 )
-                _prayerTimes.value = response.items.firstOrNull()
-                _prayerTimes.value?.let { updateCurrentPrayer(it) }
+                if (response.code == 200 && response.status == "OK") {
+                    _prayerTimes.value = mapAladhanTimingsToPrayerTimes(response.data.timings)
+                    _sunriseSunset.value = Pair(
+                        to12HourTime(response.data.timings.sunrise),
+                        to12HourTime(response.data.timings.sunset)
+                    )
+                    _prayerTimes.value?.let { updateCurrentPrayer(it) }
+                } else {
+                    _error.value = "Failed to load prayer times (${response.status})"
+                }
+            } catch (e: retrofit2.HttpException) {
+                _error.value = mapHttpExceptionMessage(e)
             } catch (e: Exception) {
                 _error.value = e.message ?: "An error occurred"
             } finally {
@@ -255,57 +299,28 @@ class PrayerTimeViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    private suspend fun fetchPrayerTimesSync(apiCityName: String) {
+    private suspend fun fetchPrayerTimesSync(lat: Double, lng: Double) {
         try {
             _error.value = null
-            val response = ApiClient.prayerTimeApi.getPrayerTimes(
-                city = apiCityName,
-                apiKey = BuildConfig.RAPID_API_KEY
+            val response = ApiClient.aladhanApi.getPrayerTimes(
+                timestamp = System.currentTimeMillis() / 1000,
+                latitude = lat,
+                longitude = lng
             )
-            _prayerTimes.value = response.items.firstOrNull()
-            _prayerTimes.value?.let { updateCurrentPrayer(it) }
+            if (response.code == 200 && response.status == "OK") {
+                _prayerTimes.value = mapAladhanTimingsToPrayerTimes(response.data.timings)
+                _sunriseSunset.value = Pair(
+                    to12HourTime(response.data.timings.sunrise),
+                    to12HourTime(response.data.timings.sunset)
+                )
+                _prayerTimes.value?.let { updateCurrentPrayer(it) }
+            } else {
+                _error.value = "Failed to load prayer times (${response.status})"
+            }
+        } catch (e: retrofit2.HttpException) {
+            _error.value = mapHttpExceptionMessage(e)
         } catch (e: Exception) {
             _error.value = e.message ?: "An error occurred"
-        }
-    }
-
-    private fun fetchSunriseSunset(lat: Double, lng: Double) {
-        viewModelScope.launch {
-            try {
-                val response = ApiClient.sunriseSunsetApi.getSunriseSunset(lat, lng)
-                if (response.status == "OK") {
-                    val formattedSunrise = response.results.sunrise.split(" ").let { parts ->
-                        val time = parts[0].split(":").take(2).joinToString(":")
-                        "$time ${parts[1]}"
-                    }
-                    val formattedSunset = response.results.sunset.split(" ").let { parts ->
-                        val time = parts[0].split(":").take(2).joinToString(":")
-                        "$time ${parts[1]}"
-                    }
-                    _sunriseSunset.value = Pair(formattedSunrise, formattedSunset)
-                }
-            } catch (e: Exception) {
-                // Handle error silently for sunrise/sunset
-            }
-        }
-    }
-
-    private suspend fun fetchSunriseSunsetSync(lat: Double, lng: Double) {
-        try {
-            val response = ApiClient.sunriseSunsetApi.getSunriseSunset(lat, lng)
-            if (response.status == "OK") {
-                val formattedSunrise = response.results.sunrise.split(" ").let { parts ->
-                    val time = parts[0].split(":").take(2).joinToString(":")
-                    "$time ${parts[1]}"
-                }
-                val formattedSunset = response.results.sunset.split(" ").let { parts ->
-                    val time = parts[0].split(":").take(2).joinToString(":")
-                    "$time ${parts[1]}"
-                }
-                _sunriseSunset.value = Pair(formattedSunrise, formattedSunset)
-            }
-        } catch (e: Exception) {
-            // Handle error silently for sunrise/sunset
         }
     }
 }

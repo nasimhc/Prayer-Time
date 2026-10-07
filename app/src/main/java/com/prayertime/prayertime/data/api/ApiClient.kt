@@ -6,7 +6,7 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
 object ApiClient {
-    private const val BASE_URL = "https://muslimsalat.p.rapidapi.com/"
+    private const val BASE_URL = "https://api.aladhan.com/"
 
     private val okHttpClient = OkHttpClient.Builder()
         .addInterceptor(HttpLoggingInterceptor().apply {
@@ -20,13 +20,5 @@ object ApiClient {
         .addConverterFactory(GsonConverterFactory.create())
         .build()
 
-    val prayerTimeApi: PrayerTimeApi = retrofit.create(PrayerTimeApi::class.java)
-
-    private val sunriseSunsetRetrofit = Retrofit.Builder()
-        .baseUrl("https://api.sunrisesunset.io/")
-        .client(okHttpClient)
-        .addConverterFactory(GsonConverterFactory.create())
-        .build()
-
-    val sunriseSunsetApi: SunriseSunsetApi = sunriseSunsetRetrofit.create(SunriseSunsetApi::class.java)
-} 
+    val aladhanApi: AladhanApi = retrofit.create(AladhanApi::class.java)
+}
